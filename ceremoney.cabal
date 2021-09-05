@@ -32,6 +32,8 @@ executable ceremoney
     build-depends:    base ^>=4.14.2.0,
                       mtl,
                       bytestring,
-                      word12
+                      word12,
+                      BitSyntax,
+                      OddWord
     hs-source-dirs:   app
     default-language: Haskell2010
