@@ -17,12 +17,12 @@ newtype Addr = Addr Word12
 newtype Reg = Reg Word16
 type RawInst = (Word4, Word4, Word4, Word4)
 
-nibbleMasks :: [Word16]
-nibbleMasks = iterate (`shiftL` 4) 0xf
+nibbleMasks :: [Int]
+nibbleMasks = iterate (`shiftL` 4) 1
 
-join4to16LE :: [Word4] -> Word16
-join4to16LE ns =
-  foldl (\acc (n, mask) -> acc + fromIntegral (n * mask)) 0 $ zip (reverse ns) nibbleMasks
+join4To16LE :: [Word4] -> Word16
+join4To16LE ns =
+  foldl (\acc (n, mask) -> acc + (n * mask)) 0 $ zip (map fromIntegral $ reverse ns) (map fromIntegral nibbleMasks)
 
 chop16 :: (Word8, Word8) -> (Word4, Word4, Word4, Word4)
 chop16 (l, r) = (ll, lr, rl, rr)
