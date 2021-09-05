@@ -17,12 +17,12 @@ newtype Addr = Addr Word12
 newtype Reg = Reg Word16
 type RawInst = (Word4, Word4, Word4, Word4)
 
-nibbleMasks :: [Int]
+nibbleMasks :: [Word16]
 nibbleMasks = iterate (`shiftL` 4) 0xf
 
 join4to16LE :: [Word4] -> Word16
 join4to16LE ns =
-  foldl (\acc (n, mask) -> 123) 0 $ zip (reverse ns) nibbleMasks
+  foldl (\acc (n, mask) -> acc + fromIntegral (n * mask)) 0 $ zip (reverse ns) nibbleMasks
 
 chop16 :: (Word8, Word8) -> (Word4, Word4, Word4, Word4)
 chop16 (l, r) = (ll, lr, rl, rr)
@@ -35,7 +35,7 @@ chop8 b = (fromIntegral l, fromIntegral r)
         r = b .&. 0x0f
 
 interp :: RawInst -> State Computer ()
-interp (0, nl, nm, nr) = undefined 
+interp (0, nl, nm, nr) = undefined
   where x = 123
 -- TODO: need to map this to an error somehow
 interp _ = undefined
