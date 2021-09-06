@@ -9,6 +9,7 @@ module Main where
 
 import Control.Monad.Except (MonadError, throwError)
 import Control.Monad.State (MonadState (get, put), State)
+import Data.Array (Array)
 import Data.BitSyntax (ReadType (Unsigned), bitSyn)
 import Data.Bits (Bits, shiftL, shiftR, (.&.))
 import qualified Data.ByteString as BS
@@ -41,16 +42,22 @@ chop8 b = (fromIntegral l, fromIntegral r)
     r = b .&. 0x0f
 
 interp :: RawInst -> Computer -> Either String Computer
--- TODO: clear the display
+-- CLS: Clear the display (TODO: implement)
 interp (0x0, 0x0, 0xe, 0x0) comp = undefined
--- RET
+-- RET: Return from a subroutine
 interp (0x0, 0x0, 0xe, 0xe) comp@Computer {stack} = do
-  f <- maybeToEither "stack underflow" $ unsnoc stack
-  return comp
--- SYS addr
-interp (0x0, nl, nm, nr) comp = Right $ comp {programCounter = joinNibbles [nl, nm, nr]}
--- TODO: need to map this to an error somehow
-interp _ comp = undefined
+  (newStack, retAddr) <- maybeToEither "stack underflow" $ unsnoc stack
+  return comp {stack = newStack, pc = retAddr}
+-- SYS addr: Jump to a machine code routine at addr
+interp (0x0, nl, nm, nr) comp = Right $ comp {pc = joinNibbles [nl, nm, nr]}
+-- JP addr: Jump to addr
+interp (0x1, nl, nm, nr) comp = Right $ comp {pc = joinNibbles [nl, nm, nr]}
+-- CALL addr: Call subroutine at addr
+interp (0x2, nl, nm, nr) comp@Computer {stack, pc} =
+  Right $ comp {stack = stack ++ [pc], pc = joinNibbles [nl, nm, nr]}
+-- SE Vx, byte
+-- not found
+interp notfound comp = Left $ "invalid instruction " <> show notfound
 
 -- TODO: not sure if i need this, going to try interping
 -- the instructions manually first
@@ -74,13 +81,14 @@ interp _ comp = undefined
 
 data Computer = Computer
   { -- usually 4096 addresses from 0x000 to 0xFFF
-    memory :: BS.ByteString,
+    memory :: Array Word12 Word8,
     -- 16 registers
-    registers :: BS.ByteString,
+    registers :: Array Word4 Word8,
+    -- special register called I
     iReg :: Word8,
     delayReg :: Word8,
     soundTimingReg :: Word8,
-    programCounter :: Word16,
+    pc :: Word16,
     stack :: [Word16]
   }
 
