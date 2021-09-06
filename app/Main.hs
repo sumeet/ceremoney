@@ -1,4 +1,5 @@
 {-# LANGUAGE BinaryLiterals #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -9,7 +10,7 @@ module Main where
 
 import Control.Monad.Except (MonadError, throwError)
 import Control.Monad.State (MonadState (get, put), State)
-import Data.Array (Array)
+import Data.Array (Array, Ix (inRange, index, range), (!))
 import Data.BitSyntax (ReadType (Unsigned), bitSyn)
 import Data.Bits (Bits, shiftL, shiftR, (.&.))
 import qualified Data.ByteString as BS
@@ -17,6 +18,12 @@ import Data.Word (Word16, Word8)
 import Data.Word.Odd (Word4)
 import Data.Word12 (Word12)
 import Font (hexFont)
+
+-- from https://hackage.haskell.org/package/base-4.13.0.0/docs/src/GHC.Word.html
+instance Ix Word4 where
+  range (m, n) = [m .. n]
+  index (m, _) i = fromIntegral (i - m)
+  inRange (m, n) i = m <= i && i <= n
 
 newtype Addr = Addr Word12
 
@@ -59,25 +66,8 @@ interp (0x2, nl, nm, nr) comp@Computer {stack, pc} =
 -- not found
 interp notfound comp = Left $ "invalid instruction " <> show notfound
 
--- TODO: not sure if i need this, going to try interping
--- the instructions manually first
--- data Instruction
---   = SYS Addr
---   | CLS
---   | RET
---   | JP Addr
---   | CALL Addr
---   | SEb Reg Word8
---   | SNE Reg Word8
---   | SEr Reg Reg
---   | LDb Reg Word8
---   | ADDb Reg Word8
---   | LDr Reg Reg
---   | OR Reg Reg
---   | AND Reg Reg
---   | XOR Reg Reg
---   | ADDr Reg Reg
---   | SUB Reg Reg
+getReg :: Word4 -> Computer -> Word8
+getReg vx Computer {registers} = registers ! vx
 
 data Computer = Computer
   { -- usually 4096 addresses from 0x000 to 0xFFF
