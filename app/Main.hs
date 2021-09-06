@@ -10,7 +10,7 @@ module Main where
 
 import Control.Monad.Except (MonadError, throwError)
 import Control.Monad.State (MonadState (get, put), State)
-import Data.Array (Array, Ix (inRange, index, range), (!))
+import Data.Array (Array, Ix (inRange, index, range), (!), (//))
 import Data.BitSyntax (ReadType (Unsigned), bitSyn)
 import Data.Bits (Bits, shiftL, shiftR, (.&.))
 import qualified Data.ByteString as BS
@@ -48,30 +48,50 @@ chop8 b = (fromIntegral l, fromIntegral r)
     l = (b `shiftR` 4) .&. 0x0f
     r = b .&. 0x0f
 
-interp :: RawInst -> Computer -> Either String Computer
--- CLS: Clear the display (TODO: implement)
-interp (0x0, 0x0, 0xe, 0x0) comp = undefined
--- RET: Return from a subroutine
-interp (0x0, 0x0, 0xe, 0xe) comp@Computer {stack} = do
-  (newStack, retAddr) <- maybeToEither "stack underflow" $ unsnoc stack
-  return comp {stack = newStack, pc = retAddr}
--- SYS addr: Jump to a machine code routine at addr
-interp (0x0, nl, nm, nr) comp = Right $ comp {pc = joinNibbles [nl, nm, nr]}
--- JP addr: Jump to addr
-interp (0x1, nl, nm, nr) comp = Right $ comp {pc = joinNibbles [nl, nm, nr]}
--- CALL addr: Call subroutine at addr
-interp (0x2, nl, nm, nr) comp@Computer {stack, pc} =
-  Right $ comp {stack = stack ++ [pc], pc = joinNibbles [nl, nm, nr]}
--- SE Vx, byte
--- not found
-interp notfound comp = Left $ "invalid instruction " <> show notfound
-
-getReg :: Word4 -> Computer -> Word8
-getReg vx Computer {registers} = registers ! vx
+interp :: Computer -> Either String Computer
+interp comp@Computer {memory, stack, pc, registers} = case inst of
+  -- CLS: Clear the display (TODO: implement)
+  (0x0, 0x0, 0xe, 0x0) -> undefined
+  -- RET: Return from a subroutine
+  (0x0, 0x0, 0xe, 0xe) -> do
+    (newStack, retAddr) <- maybeToEither "stack underflow" $ unsnoc stack
+    return comp {stack = newStack, pc = retAddr}
+  -- SYS addr: Jump to a machine code routine at addr
+  (0x0, nl, nm, nr) -> Right $ comp {pc = joinNibbles [nl, nm, nr]}
+  -- JP addr: Jump to addr
+  (0x1, nl, nm, nr) -> Right $ comp {pc = joinNibbles [nl, nm, nr]}
+  -- CALL addr: Call subroutine at addr
+  (0x2, nl, nm, nr) ->
+    Right $
+      comp {stack = stack ++ [nextPc], pc = joinNibbles [nl, nm, nr]}
+  -- SE Vx, byte: Skip next instruction if Vx == byte
+  (0x3, vx, bl, bh) ->
+    let byte = joinNibbles [bl, bh]
+     in Right $ if registers ! vx == byte then skipComp else nextComp
+  -- SNE Vx, byte: Skip next instruction if Vx != byte
+  (0x4, vx, bl, bh) ->
+    let byte = joinNibbles [bl, bh]
+     in Right $ if registers ! vx /= byte then skipComp else nextComp
+  -- SE Vx, Vy: Skip next instruction if Vx == Vy
+  (0x5, vx, vy, 0) ->
+    Right $ if registers ! vx /= registers ! vy then skipComp else nextComp
+  -- LD Vx, byte: Set Vx = byte
+  (0x6, vx, bl, bh) ->
+    let byte = joinNibbles [bl, bh]
+     in Right $ comp {pc = nextPc, registers = registers // [(vx, byte)]}
+  -- Error: Invalid instruction
+  notfound -> Left $ "invalid instruction " <> show notfound
+  where
+    inst = chop16 (memory ! pc, memory ! pc + 1)
+    nextPc = pc + 1
+    nextComp = comp {pc = nextPc}
+    skipPc = nextPc + 1
+    skipComp = comp {pc = skipPc}
+    getReg = (registers !)
 
 data Computer = Computer
   { -- usually 4096 addresses from 0x000 to 0xFFF
-    memory :: Array Word12 Word8,
+    memory :: Array Word16 Word8,
     -- 16 registers
     registers :: Array Word4 Word8,
     -- special register called I
