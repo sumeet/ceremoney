@@ -35,6 +35,7 @@ executable ceremoney
                       word12,
                       BitSyntax,
                       OddWord,
-                      array
+                      array,
+                      random
     hs-source-dirs:   app
     default-language: Haskell2010

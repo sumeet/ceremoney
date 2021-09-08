@@ -18,6 +18,7 @@ import Data.Word (Word16, Word8)
 import Data.Word.Odd (Word4)
 import Data.Word12 (Word12)
 import Font (hexFont)
+import System.Random (StdGen, genWord8)
 
 -- from https://hackage.haskell.org/package/base-4.13.0.0/docs/src/GHC.Word.html
 instance Ix Word4 where
@@ -55,7 +56,7 @@ chop8 b = (fromIntegral l, fromIntegral r)
     r = b .&. 0x0f
 
 interp :: Computer -> Either String Computer
-interp comp@Computer {memory, stack, pc, registers} = case inst of
+interp comp@Computer {memory, stack, pc, registers, randGen, delayTimer, iReg} = case inst of
   -- CLS: Clear the display (TODO: implement)
   (0x0, 0x0, 0xe, 0x0) -> undefined
   -- RET: Return from a subroutine
@@ -133,7 +134,55 @@ interp comp@Computer {memory, stack, pc, registers} = case inst of
       (valX, valY) = (registers ! vx, registers ! vy)
       msbIsSet = valY .&. 0b10000000 /= 0
       registers' = registers // [(vx, valY `shiftL` 1), (vf, if msbIsSet then 1 else 0)]
-
+  -- SNE Vx, Vy: Skip next instruction if Vx != Vy
+  (0x9, vx, vy, 0) ->
+    Right $ if registers ! vx /= registers ! vy then skipComp else nextComp
+  -- LD nnn: Set I = nnn
+  (0xa, nl, nm, nr) -> Right $ nextComp {iReg = joinNibbles [nl, nm, nr]}
+  -- JP V0, addr: Jump to location nnn + V0
+  (0xb, nl, nm, nr) -> Right $ comp {pc = jumpDest}
+    where
+      jumpDest = joinNibbles [nl, nm, nr] + fromIntegral (registers ! v0)
+  -- RND Vx, byte: Set Vx = random byte AND kk
+  (0xc, vx, nl, nh) -> Right $ nextComp {randGen = randGen', registers = registers'}
+    where
+      (randByte, randGen') = genWord8 randGen
+      registers' = registers // [(vx, randByte .&. joinNibbles [nl, nh])]
+  -- DRW Vx, Vy, nibble: Display n-byte sprite starting at memory location I at
+  -- (Vx, Vy), set VF = collision
+  -- TODO: unimplemented until we have concept of display
+  (0xd, vx, vy, n) -> undefined
+  -- SKP Vx: Skip next instruction if key with the value of Vx is pressed
+  -- TODO: unimplemented until we have concept of keyboard
+  (0xe, vx, 0x9, 0xe) -> undefined
+  -- SKNP Vx: Skip next instruction if key with the value of Vx is not
+  -- pressed
+  -- TODO: unimplemented until we have concept of keyboard
+  (0xe, vx, 0xa, 0x1) -> undefined
+  -- Fx07 - LD Vx, DT: Set Vx = delay timer value.
+  (0xf, vx, 0x0, 0x7) -> Right $ nextComp {registers = registers // [(vx, delayTimer)]}
+  -- LD Vx, K: Wait for a key press, store the value of the key in Vx
+  -- TODO: unimplemented until we have a concept of keyboard and concept of waiting
+  (0xf, vx, 0x0, 0xa) -> undefined
+  -- LD DT, Vx: Set delay timer = Vx
+  (0xf, vx, 0x1, 0x5) -> Right $ nextComp {delayTimer = registers ! vx}
+  -- LD ST, Vx: Set sound timer = Vx
+  (0xf, vx, 0x1, 0x8) -> Right $ nextComp {soundTimer = registers ! vx}
+  -- ADD I, Vx: Set I = I + Vx
+  (0xf, vx, 0x1, 0xe) -> Right $ nextComp {iReg = iReg + fromIntegral (registers ! vx)}
+  -- LD F, Vx: Set I = location of sprite for digit Vx
+  -- TODO: unimplemented until we load the font into memory
+  (0xf, vx, 0x2, 0x9) -> undefined
+  -- Fx33 - LD B, Vx: Store BCD representation of Vx in memory locations
+  -- I, I+1, and I+2:
+  -- Hundreds digit in memory at location in I, the tens digit at location I+1,
+  -- and the ones digit at location I+2
+  (0xf, vx, 0x3, 0x3) -> Right $ nextComp {memory = memory // updates}
+    where
+      memoryLocations = take 3 $ iterate (+ 1) iReg
+      updates = zip memoryLocations (bcd3 $ registers ! vx)
+  --
+  -- END OF INSTRUCTIONS
   -- Error: Invalid instruction
   notfound -> Left $ "invalid instruction " <> show notfound
   where
@@ -144,11 +193,19 @@ interp comp@Computer {memory, stack, pc, registers} = case inst of
     skipComp = comp {pc = skipPc}
     getReg = (registers !)
     vf = 0xf
+    v0 = 0x0
 
 add :: Word8 -> Word8 -> (Word8, Bool)
 add x y = (sumL, sumH /= 0x0)
   where
     (sumH, sumL) = chop16 $ fromIntegral x + fromIntegral y
+
+bcd3 :: Word8 -> [Word8]
+bcd3 n = [hundreds, tens, ones]
+  where
+    hundreds = n `div` 100
+    tens = (n - (hundreds * 100)) `div` 10
+    ones = n - (hundreds * 100) - (tens * 10)
 
 data Computer = Computer
   { -- usually 4096 addresses from 0x000 to 0xFFF
@@ -156,11 +213,13 @@ data Computer = Computer
     -- 16 registers
     registers :: Array Word4 Word8,
     -- special register called I
-    iReg :: Word8,
-    delayReg :: Word8,
-    soundTimingReg :: Word8,
+    iReg :: Word16,
+    delayTimer :: Word8,
+    soundTimer :: Word8,
     pc :: Word16,
-    stack :: [Word16]
+    stack :: [Word16],
+    -- random number generator
+    randGen :: StdGen
   }
 
 main :: IO ()
