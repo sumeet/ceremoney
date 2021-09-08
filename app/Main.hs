@@ -121,6 +121,12 @@ interp comp@Computer {memory, stack, pc, registers} = case inst of
     where
       (valX, valY) = (registers ! vx, registers ! vy)
       registers' = registers // [(vx, valY `shiftR` 1), (vf, valY .&. 0b1)]
+  -- SUBN Vx, Vy: Set Vx = Vy - Vx, set VF = NOT borrow
+  (0x8, vx, vy, 0x7) -> Right $ nextComp {registers = registers'}
+    where
+      registers' = registers // [(vx, diff), (vf, if valY > valX then 0x1 else 0x0)]
+      diff = valY - valX
+      (valX, valY) = (registers ! vx, registers ! vy)
 
   -- Error: Invalid instruction
   notfound -> Left $ "invalid instruction " <> show notfound
