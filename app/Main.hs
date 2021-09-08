@@ -14,7 +14,7 @@ import Data.Array (Array, Ix (inRange, index, range), (!), (//))
 import Data.BitSyntax (ReadType (Unsigned), bitSyn)
 import Data.Bits (Bits, shiftL, shiftR, xor, (.&.), (.|.))
 import qualified Data.ByteString as BS
-import Data.Word (Word16, Word8)
+import Data.Word (Word16, Word32, Word8)
 import Data.Word.Odd (Word4)
 import Data.Word12 (Word12)
 import Font (hexFont)
@@ -54,6 +54,18 @@ chop8 b = (fromIntegral l, fromIntegral r)
   where
     l = (b `shiftR` 4) .&. 0x0f
     r = b .&. 0x0f
+
+timing :: Word32 -> Computer -> Computer
+timing newTickMs comp@Computer {delayTimer, soundTimer, lastTickMs} =
+  comp
+    { delayTimer = decr delayTimer,
+      soundTimer = decr soundTimer,
+      lastTickMs = newTickMs
+    }
+  where
+    decr timer = if timer < numDelayTicks then 0 else timer - numDelayTicks
+    numDelayTicks = floor $ diff / ((1 / 60) * 1000)
+    diff = fromIntegral $ newTickMs - lastTickMs
 
 interp :: Computer -> Either String Computer
 interp comp@Computer {memory, stack, pc, registers, randGen, delayTimer, iReg} = case inst of
@@ -225,10 +237,12 @@ data Computer = Computer
     registers :: Array Word4 Word8,
     -- special register called I
     iReg :: Word16,
-    delayTimer :: Word8,
-    soundTimer :: Word8,
     pc :: Word16,
     stack :: [Word16],
+    delayTimer :: Word8,
+    soundTimer :: Word8,
+    -- timer: Word32 because that's what SDL uses
+    lastTickMs :: Word32,
     -- random number generator
     randGen :: StdGen
   }
