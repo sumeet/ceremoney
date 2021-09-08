@@ -116,7 +116,7 @@ interp comp@Computer {memory, stack, pc, registers} = case inst of
       registers' = registers // [(vx, diff), (vf, if valX > valY then 0x1 else 0x0)]
       diff = valX - valY
       (valX, valY) = (registers ! vx, registers ! vy)
-  -- SHR Vx: Set Vy SHR 1, set VF = LSB Vy
+  -- SHR Vx: Set Vy SHR 1, set VF = 1 if LSB Vy
   (0x8, vx, vy, 0x6) -> Right $ nextComp {registers = registers'}
     where
       (valX, valY) = (registers ! vx, registers ! vy)
@@ -127,6 +127,12 @@ interp comp@Computer {memory, stack, pc, registers} = case inst of
       registers' = registers // [(vx, diff), (vf, if valY > valX then 0x1 else 0x0)]
       diff = valY - valX
       (valX, valY) = (registers ! vx, registers ! vy)
+  -- SHL Vx: Set Vy SHR 1, set VF = 1 if MSB Vy
+  (0x8, vx, vy, 0xe) -> Right $ nextComp {registers = registers'}
+    where
+      (valX, valY) = (registers ! vx, registers ! vy)
+      msbIsSet = valY .&. 0b10000000 /= 0
+      registers' = registers // [(vx, valY `shiftL` 1), (vf, if msbIsSet then 1 else 0)]
 
   -- Error: Invalid instruction
   notfound -> Left $ "invalid instruction " <> show notfound
