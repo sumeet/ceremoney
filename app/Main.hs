@@ -173,14 +173,18 @@ interp comp@Computer {memory, stack, pc, registers, randGen, delayTimer, iReg} =
   -- LD F, Vx: Set I = location of sprite for digit Vx
   -- TODO: unimplemented until we load the font into memory
   (0xf, vx, 0x2, 0x9) -> undefined
-  -- Fx33 - LD B, Vx: Store BCD representation of Vx in memory locations
+  -- LD B, Vx: Store BCD representation of Vx in memory locations
   -- I, I+1, and I+2:
   -- Hundreds digit in memory at location in I, the tens digit at location I+1,
   -- and the ones digit at location I+2
   (0xf, vx, 0x3, 0x3) -> Right $ nextComp {memory = memory // updates}
     where
-      memoryLocations = take 3 $ iterate (+ 1) iReg
+      memoryLocations = take 3 $ countUpFrom iReg
       updates = zip memoryLocations (bcd3 $ registers ! vx)
+  -- LD [I], Vx: Store registers V0 through Vx in memory starting at location I
+  (0xf, vx, 0x5, 0x5) -> Right $ nextComp {memory = memory // updates}
+    where
+      updates = zip (countUpFrom iReg) $ map (registers !) [fromIntegral v0 .. vx]
   --
   -- END OF INSTRUCTIONS
   -- Error: Invalid instruction
@@ -194,6 +198,9 @@ interp comp@Computer {memory, stack, pc, registers, randGen, delayTimer, iReg} =
     getReg = (registers !)
     vf = 0xf
     v0 = 0x0
+
+countUpFrom :: Integral i => i -> [i]
+countUpFrom = iterate (+ 1)
 
 add :: Word8 -> Word8 -> (Word8, Bool)
 add x y = (sumL, sumH /= 0x0)
