@@ -185,6 +185,10 @@ interp comp@Computer {memory, stack, pc, registers, randGen, delayTimer, iReg} =
   (0xf, vx, 0x5, 0x5) -> Right $ nextComp {memory = memory // updates}
     where
       updates = zip (countUpFrom iReg) $ map (registers !) [fromIntegral v0 .. vx]
+  -- LD Vx, [I]: Read registers V0 through Vx from memory starting at location I.
+  (0xf, vx, 0x6, 0x5) -> Right $ nextComp {registers = registers // updates}
+    where
+      updates = zip [fromIntegral v0 .. vx] $ map (memory !) $ countUpFrom iReg
   --
   -- END OF INSTRUCTIONS
   -- Error: Invalid instruction
