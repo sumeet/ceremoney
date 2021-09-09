@@ -56,16 +56,17 @@ chop8 b = (fromIntegral l, fromIntegral r)
     r = b .&. 0x0f
 
 timing :: Word32 -> Computer -> Computer
-timing newTickMs comp@Computer {delayTimer, soundTimer, lastTickMs} =
+timing newNumMsSinceOn comp@Computer {delayTimer, soundTimer, numMsSinceOn} =
   comp
     { delayTimer = decr delayTimer,
       soundTimer = decr soundTimer,
-      lastTickMs = newTickMs
+      numMsSinceOn = newNumMsSinceOn
     }
   where
     decr timer = if timer < numDelayTicks then 0 else timer - numDelayTicks
-    numDelayTicks = floor $ diff / ((1 / 60) * 1000)
-    diff = fromIntegral $ newTickMs - lastTickMs
+    numDelayTicks = floor $ numTicksThisTime - numTicksLastTime
+    numTicksThisTime = fromIntegral newNumMsSinceOn / ((1 / 60) * 1000)
+    numTicksLastTime = fromIntegral numMsSinceOn / ((1 / 60) * 1000)
 
 interp :: Computer -> Either String Computer
 interp comp@Computer {memory, stack, pc, registers, randGen, delayTimer, iReg} = case inst of
@@ -242,7 +243,7 @@ data Computer = Computer
     delayTimer :: Word8,
     soundTimer :: Word8,
     -- timer: Word32 because that's what SDL uses
-    lastTickMs :: Word32,
+    numMsSinceOn :: Word32,
     -- random number generator
     randGen :: StdGen
   }
