@@ -10,7 +10,7 @@ module Main where
 
 import Control.Monad.Except (MonadError, throwError)
 import Control.Monad.State (MonadState (get, put), State)
-import Data.Array (Array, Ix (inRange, index, range), (!), (//))
+import Data.Array (Array, Ix (inRange, index, range), array, (!), (//))
 import Data.BitSyntax (ReadType (Unsigned), bitSyn)
 import Data.Bits (Bits, shiftL, shiftR, xor, (.&.), (.|.))
 import qualified Data.ByteString as BS
@@ -70,8 +70,8 @@ timing newNumMsSinceOn comp@Computer {delayTimer, soundTimer, numMsSinceOn} =
 
 interp :: Computer -> Either String Computer
 interp comp@Computer {memory, stack, pc, registers, randGen, delayTimer, iReg} = case inst of
-  -- CLS: Clear the display (TODO: implement)
-  (0x0, 0x0, 0xe, 0x0) -> undefined
+  -- CLS: Clear the display
+  (0x0, 0x0, 0xe, 0x0) -> Right $ nextComp {display = clearDisplay}
   -- RET: Return from a subroutine
   (0x0, 0x0, 0xe, 0xe) -> do
     (newStack, retAddr) <- maybeToEither "stack underflow" $ unsnoc stack
@@ -231,6 +231,25 @@ bcd3 n = [hundreds, tens, ones]
     tens = (n - (hundreds * 100)) `div` 10
     ones = n - (hundreds * 100) - (tens * 10)
 
+-- display: 64x32 pixels
+displayWidth :: Word8
+displayWidth = 64
+
+displayHeight :: Word8
+displayHeight = 32
+
+-- (0x00, 0x00), and the bottom-right is assigned (0x3F, 0x1F)
+type Display = Array (Word8, Word8) Bool
+
+clearDisplay :: Display
+clearDisplay =
+  array
+    ((0x00, 0x00), (maxX, maxY))
+    [((x, y), False) | y <- [0 .. maxY], x <- [0 .. maxX]]
+  where
+    maxX = displayWidth - 1
+    maxY = displayHeight - 1
+
 data Computer = Computer
   { -- usually 4096 addresses from 0x000 to 0xFFF
     memory :: Array Word16 Word8,
@@ -242,6 +261,7 @@ data Computer = Computer
     stack :: [Word16],
     delayTimer :: Word8,
     soundTimer :: Word8,
+    display :: Display,
     -- timer: Word32 because that's what SDL uses
     numMsSinceOn :: Word32,
     -- random number generator
