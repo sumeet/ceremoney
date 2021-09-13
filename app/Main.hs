@@ -210,8 +210,13 @@ interp
           else nextComp
     -- SKNP Vx: Skip next instruction if key with the value of Vx is not
     -- pressed
-    -- TODO: unimplemented until we have concept of keyboard
-    (0xe, vx, 0xa, 0x1) -> undefined
+    (0xe, vx, 0xa, 0x1) ->
+      Right $
+        -- TODO: no bounds checking on KB
+        -- (the register is 8 bit, but kb is addressed by 4-bits)
+        if kb ! fromIntegral (registers ! vx)
+          then nextComp
+          else skipComp
     -- Fx07 - LD Vx, DT: Set Vx = delay timer value.
     (0xf, vx, 0x0, 0x7) -> Right $ nextComp {registers = registers // [(vx, delayTimer)]}
     -- LD Vx, K: Wait for a key press, store the value of the key in Vx
