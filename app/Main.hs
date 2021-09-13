@@ -80,7 +80,8 @@ interp
       randGen,
       delayTimer,
       iReg,
-      display
+      display,
+      kb
     } = case inst of
     -- CLS: Clear the display
     (0x0, 0x0, 0xe, 0x0) -> Right $ nextComp {display = clearDisplay}
@@ -200,8 +201,13 @@ interp
         startX = registers ! vx
         startY = registers ! vy
     -- SKP Vx: Skip next instruction if key with the value of Vx is pressed
-    -- TODO: unimplemented until we have concept of keyboard
-    (0xe, vx, 0x9, 0xe) -> undefined
+    (0xe, vx, 0x9, 0xe) ->
+      Right $
+        -- TODO: no bounds checking on KB
+        -- (the register is 8 bit, but kb is addressed by 4-bits)
+        if kb ! fromIntegral (registers ! vx)
+          then skipComp
+          else nextComp
     -- SKNP Vx: Skip next instruction if key with the value of Vx is not
     -- pressed
     -- TODO: unimplemented until we have concept of keyboard
@@ -235,9 +241,7 @@ interp
     -- LD [I], Vx: Store registers V0 through Vx in memory starting at location I
     (0xf, vx, 0x5, 0x5) -> Right $ nextComp {memory = memory // updates}
       where
-        updates =
-          zip [iReg ..] $
-            map (registers !) [fromIntegral v0 .. vx]
+        updates = zip [iReg ..] $ map (registers !) [fromIntegral v0 .. vx]
     -- LD Vx, [I]: Read registers V0 through Vx from memory starting at location I.
     (0xf, vx, 0x6, 0x5) -> Right $ nextComp {registers = registers // updates}
       where
@@ -311,6 +315,7 @@ data Computer = Computer
     delayTimer :: Word8,
     soundTimer :: Word8,
     display :: Display,
+    kb :: Keyboard,
     -- timer: Word32 because that's what SDL uses
     numMsSinceOn :: Word32,
     -- random number generator
@@ -327,6 +332,11 @@ newMemory = array (0x000, 0xFFF) $ fontRegion <> restRegion
 
 fontLoc :: Num b => Word8 -> b
 fontLoc hexDigit = fromIntegral $ hexDigit * charBytes hexDigit
+
+type Keyboard = Array Word4 Bool
+
+newKeyboard :: Keyboard
+newKeyboard = array (0x0, 0xf) $ map (,False) [0x0 .. 0xf]
 
 main :: IO ()
 main = putStrLn "sup"
