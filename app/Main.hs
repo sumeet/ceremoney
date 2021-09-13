@@ -18,7 +18,7 @@ import qualified Data.ByteString as BS
 import Data.Word (Word16, Word32, Word8)
 import Data.Word.Odd (Word4)
 import Data.Word12 (Word12)
-import Font (font)
+import Font (charBytes, hexFont)
 import GHC.Arr (Array (Array))
 import System.Random (StdGen, genWord8)
 
@@ -223,8 +223,7 @@ interp
               iReg + fromIntegral (registers ! vx)
           }
     -- LD F, Vx: Set I = location of sprite for digit Vx
-    -- TODO: unimplemented until we load the font into memory
-    (0xf, vx, 0x2, 0x9) -> undefined
+    (0xf, vx, 0x2, 0x9) -> Right $ nextComp {iReg = fontLoc $ registers ! vx}
     -- LD B, Vx: Store BCD representation of Vx in memory locations
     -- I, I+1, and I+2:
     -- Hundreds digit in memory at location in I, the tens digit at location I+1,
@@ -324,7 +323,10 @@ newMemory :: Memory
 newMemory = array (0x000, 0xFFF) $ fontRegion <> restRegion
   where
     restRegion = map (,0x0) [fromIntegral $ length fontRegion .. 0xFFF]
-    fontRegion = zip [0 ..] $ concat font
+    fontRegion = zip [0 ..] $ concat hexFont
+
+fontLoc :: Num b => Word8 -> b
+fontLoc hexDigit = fromIntegral $ hexDigit * charBytes hexDigit
 
 main :: IO ()
 main = putStrLn "sup"

@@ -3,9 +3,13 @@
 module Font where
 
 import Data.Word (Word8)
+import Data.Word.Odd (Word4)
 
-font :: [[Word8]]
-font = [zero, one, two, three, four, five, six, seven, eight, nine, a, b, c, d, e, f]
+charBytes :: Integral i => Word8 -> i
+charBytes n = fromIntegral $ length $ hexFont !! fromIntegral n
+
+hexFont :: [[Word8]]
+hexFont = [zero, one, two, three, four, five, six, seven, eight, nine, a, b, c, d, e, f]
   where
     zero =
       [ 0b11110000,
