@@ -185,10 +185,15 @@ interp
         updates = zip coords newPx
         (newPx, collision) =
           foldl
-            (\(upd, col) (ex, new) -> (upd <> [ex /= new], col || (ex && new)))
+            ( \(upd, hasColli) (ex, new) ->
+                (upd <> [ex `xor` new], hasColli || (ex && new))
+            )
             ([], False)
             $ zip existingPx newPx
-        memPx = concatMap bits $ take (fromIntegral n) $ map (memory !) $ countUpFrom iReg
+        xor = (/=)
+        memPx =
+          concatMap bits $
+            take (fromIntegral n) $ map (memory !) $ countUpFrom iReg
         existingPx = map (display !) coords
         coords = drawRange display startX startY n
         startX = registers ! vx
