@@ -4,8 +4,8 @@ module Font where
 
 import Data.Word (Word8)
 
-hexFont :: [[Word8]]
-hexFont = [zero, one, two, three, four, five, six, seven, eight, nine, a, b, c, d, e, f]
+font :: [[Word8]]
+font = [zero, one, two, three, four, five, six, seven, eight, nine, a, b, c, d, e, f]
   where
     zero =
       [ 0b11110000,

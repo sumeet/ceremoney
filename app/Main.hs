@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
 
 module Main where
 
@@ -17,7 +18,7 @@ import qualified Data.ByteString as BS
 import Data.Word (Word16, Word32, Word8)
 import Data.Word.Odd (Word4)
 import Data.Word12 (Word12)
-import Font (hexFont)
+import Font (font)
 import GHC.Arr (Array (Array))
 import System.Random (StdGen, genWord8)
 
@@ -193,7 +194,7 @@ interp
         xor = (/=)
         memPx =
           concatMap bits $
-            take (fromIntegral n) $ map (memory !) $ countUpFrom iReg
+            take (fromIntegral n) $ map (memory !) [iReg ..]
         existingPx = map (display !) coords
         coords = drawRange display startX startY n
         startX = registers ! vx
@@ -230,20 +231,20 @@ interp
     -- and the ones digit at location I+2
     (0xf, vx, 0x3, 0x3) -> Right $ nextComp {memory = memory // updates}
       where
-        memoryLocations = take 3 $ countUpFrom iReg
+        memoryLocations = take 3 [iReg ..]
         updates = zip memoryLocations (bcd3 $ registers ! vx)
     -- LD [I], Vx: Store registers V0 through Vx in memory starting at location I
     (0xf, vx, 0x5, 0x5) -> Right $ nextComp {memory = memory // updates}
       where
         updates =
-          zip (countUpFrom iReg) $
+          zip [iReg ..] $
             map (registers !) [fromIntegral v0 .. vx]
     -- LD Vx, [I]: Read registers V0 through Vx from memory starting at location I.
     (0xf, vx, 0x6, 0x5) -> Right $ nextComp {registers = registers // updates}
       where
         updates =
           zip [fromIntegral v0 .. vx] $
-            map (memory !) $ countUpFrom iReg
+            map (memory !) [iReg ..]
     --
     -- END OF INSTRUCTIONS
     -- Error: Invalid instruction
@@ -258,7 +259,7 @@ interp
       vf = 0xf
       v0 = 0x0
 
-bits :: Bits b => b -> [Bool]
+bits :: Word8 -> [Bool]
 bits bs = reverse $ map (testBit bs) [0 .. finiteBitSize bs - 1]
 
 drawRange :: Integral i => Display -> Word8 -> Word8 -> i -> [(Word8, Word8)]
@@ -267,9 +268,6 @@ drawRange (Array _ (maxX, maxY) _ _) startX startY n =
   where
     ys = map (`mod` (maxY + 1)) [startY .. startY + fromIntegral n - 1]
     xs = map (`mod` (maxX + 1)) [startX .. startX + 7]
-
-countUpFrom :: Integral i => i -> [i]
-countUpFrom = iterate (+ 1)
 
 add :: Word8 -> Word8 -> (Word8, Bool)
 add x y = (sumL, sumH /= 0x0)
@@ -304,7 +302,7 @@ clearDisplay =
 
 data Computer = Computer
   { -- usually 4096 addresses from 0x000 to 0xFFF
-    memory :: Array Word16 Word8,
+    memory :: Memory,
     -- 16 registers
     registers :: Array Word4 Word8,
     -- special register called I
@@ -319,6 +317,14 @@ data Computer = Computer
     -- random number generator
     randGen :: StdGen
   }
+
+type Memory = Array Word16 Word8
+
+newMemory :: Memory
+newMemory = array (0x000, 0xFFF) $ fontRegion <> restRegion
+  where
+    restRegion = map (,0x0) [fromIntegral $ length fontRegion .. 0xFFF]
+    fontRegion = zip [0 ..] $ concat font
 
 main :: IO ()
 main = putStrLn "sup"
