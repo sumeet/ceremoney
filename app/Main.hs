@@ -11,7 +11,7 @@ module Main where
 
 import Control.Monad.Except (MonadError, throwError)
 import Control.Monad.State (MonadState (get, put), State)
-import Data.Array (Array, Ix (inRange, index, range), array, assocs, (!), (//))
+import Data.Array (Ix (inRange, index, range), array, assocs, (!), (//))
 import Data.BitSyntax (ReadType (Unsigned), bitSyn)
 import Data.Bits (Bits, FiniteBits (finiteBitSize), shiftL, shiftR, testBit, xor, (.&.), (.|.))
 import qualified Data.ByteString as BS
@@ -235,11 +235,7 @@ interp
     (0xf, vx, 0x1, 0x8) -> Right $ nextComp {soundTimer = registers ! vx}
     -- ADD I, Vx: Set I = I + Vx
     (0xf, vx, 0x1, 0xe) ->
-      Right $
-        nextComp
-          { iReg =
-              iReg + fromIntegral (registers ! vx)
-          }
+      Right $ nextComp {iReg = iReg + fromIntegral (registers ! vx)}
     -- LD F, Vx: Set I = location of sprite for digit Vx
     (0xf, vx, 0x2, 0x9) -> Right $ nextComp {iReg = fontLoc $ registers ! vx}
     -- LD B, Vx: Store BCD representation of Vx in memory locations
