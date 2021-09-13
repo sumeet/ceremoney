@@ -11,10 +11,11 @@ module Main where
 
 import Control.Monad.Except (MonadError, throwError)
 import Control.Monad.State (MonadState (get, put), State)
-import Data.Array (Array, Ix (inRange, index, range), array, (!), (//))
+import Data.Array (Array, Ix (inRange, index, range), array, assocs, (!), (//))
 import Data.BitSyntax (ReadType (Unsigned), bitSyn)
 import Data.Bits (Bits, FiniteBits (finiteBitSize), shiftL, shiftR, testBit, xor, (.&.), (.|.))
 import qualified Data.ByteString as BS
+import Data.Foldable (find)
 import Data.Word (Word16, Word32, Word8)
 import Data.Word.Odd (Word4)
 import Data.Word12 (Word12)
@@ -220,8 +221,14 @@ interp
     -- Fx07 - LD Vx, DT: Set Vx = delay timer value.
     (0xf, vx, 0x0, 0x7) -> Right $ nextComp {registers = registers // [(vx, delayTimer)]}
     -- LD Vx, K: Wait for a key press, store the value of the key in Vx
-    -- TODO: unimplemented until we have a concept of keyboard and concept of waiting
-    (0xf, vx, 0x0, 0xa) -> undefined
+    (0xf, vx, 0x0, 0xa) ->
+      let pressedKey = fst <$> find snd (assocs kb)
+       in case pressedKey of
+            Just key -> Right $ nextComp {registers = registers'}
+              where
+                registers' = registers // [(vx, fromIntegral key)]
+            -- will repeat this instruction
+            Nothing -> Right comp
     -- LD DT, Vx: Set delay timer = Vx
     (0xf, vx, 0x1, 0x5) -> Right $ nextComp {delayTimer = registers ! vx}
     -- LD ST, Vx: Set sound timer = Vx
