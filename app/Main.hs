@@ -254,7 +254,7 @@ interp
           zip [fromIntegral v0 .. vx] $
             map (memory !) [iReg ..]
     --
-    -- END OF INSTRUCTIONS
+    -- END OF VALID INSTRUCTIONS
     -- Error: Invalid instruction
     notfound -> Left $ "invalid instruction " <> show notfound
     where
