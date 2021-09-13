@@ -12,7 +12,7 @@ import Control.Monad.Except (MonadError, throwError)
 import Control.Monad.State (MonadState (get, put), State)
 import Data.Array (Array, Ix (inRange, index, range), array, (!), (//))
 import Data.BitSyntax (ReadType (Unsigned), bitSyn)
-import Data.Bits (Bits, shiftL, shiftR, xor, (.&.), (.|.))
+import Data.Bits (Bits, FiniteBits (finiteBitSize), shiftL, shiftR, testBit, xor, (.&.), (.|.))
 import qualified Data.ByteString as BS
 import Data.Word (Word16, Word32, Word8)
 import Data.Word.Odd (Word4)
@@ -175,9 +175,22 @@ interp
     -- DRW Vx, Vy, nibble: Display n-byte sprite starting at memory location I at
     -- (Vx, Vy), set VF = collision
     -- sprites are always 8 across
-    (0xd, vx, vy, n) -> Right $ nextComp {display = display // updates}
+    (0xd, vx, vy, n) ->
+      Right $
+        nextComp
+          { display = display // updates,
+            registers = registers // [(vf, if collision then 0x1 else 0x0)]
+          }
       where
-        updates = undefined
+        updates = zip coords newPx
+        (newPx, collision) =
+          foldl
+            (\(upd, col) (ex, new) -> (upd <> [ex /= new], col || (ex && new)))
+            ([], False)
+            $ zip existingPx newPx
+        memPx = concatMap bits $ take (fromIntegral n) $ map (memory !) $ countUpFrom iReg
+        existingPx = map (display !) coords
+        coords = drawRange display startX startY n
         startX = registers ! vx
         startY = registers ! vy
     -- SKP Vx: Skip next instruction if key with the value of Vx is pressed
@@ -240,7 +253,10 @@ interp
       vf = 0xf
       v0 = 0x0
 
-drawRange :: Display -> Word8 -> Word8 -> Int -> [(Word8, Word8)]
+bits :: Bits b => b -> [Bool]
+bits bs = reverse $ map (testBit bs) [0 .. finiteBitSize bs - 1]
+
+drawRange :: Integral i => Display -> Word8 -> Word8 -> i -> [(Word8, Word8)]
 drawRange (Array _ (maxX, maxY) _ _) startX startY n =
   [(x, y) | y <- ys, x <- xs]
   where
