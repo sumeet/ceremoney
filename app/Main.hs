@@ -24,7 +24,7 @@ import Data.Word.Odd (Word4)
 import Data.Word12 (Word12)
 import Font (charBytes, hexFont)
 import GHC.Arr (Array (Array))
-import SDL (EventPayload (KeyboardEvent), InputMotion (Pressed), Renderer, V4 (V4), clear, createRenderer, createWindow, defaultRenderer, defaultWindow, destroyWindow, eventPayload, initializeAll, keyboardEventKeyMotion, keyboardEventKeysym, keysymKeycode, pollEvents, present, rendererDrawColor, ticks, ($=))
+import SDL (EventPayload (KeyboardEvent), InputMotion (Pressed), Renderer, V2 (V2), V4 (V4), WindowConfig, clear, createRenderer, createWindow, defaultRenderer, defaultWindow, destroyWindow, eventPayload, initializeAll, keyboardEventKeyMotion, keyboardEventKeysym, keysymKeycode, pollEvents, present, rendererDrawColor, rendererScale, ticks, windowHighDPI, windowInitialSize, ($=))
 import SDL.Input.Keyboard.Codes
 import System.Random (StdGen, genWord8, mkStdGen)
 
@@ -48,7 +48,7 @@ joinNibbles ns = sum $ zipWith (*) (map fromIntegral $ reverse ns) nibbleMasks
 chop16 :: Word16 -> (Word8, Word8)
 chop16 w = (fromIntegral l, fromIntegral r)
   where
-    l = (w `shiftR` 8) .&. 0xff
+    l = w `shiftR` 8 .&. 0xff
     r = w .&. 0xff
 
 chop8s :: (Word8, Word8) -> (Word4, Word4, Word4, Word4)
@@ -60,7 +60,7 @@ chop8s (l, r) = (ll, lr, rl, rr)
 chop8 :: Word8 -> (Word4, Word4)
 chop8 b = (fromIntegral l, fromIntegral r)
   where
-    l = (b `shiftR` 4) .&. 0x0f
+    l = b `shiftR` 4 .&. 0x0f
     r = b .&. 0x0f
 
 timing :: Word32 -> Computer -> Computer
@@ -73,8 +73,8 @@ timing newNumMsSinceOn comp@Computer {delayTimer, soundTimer, numMsSinceOn} =
   where
     decr timer = if timer < numDelayTicks then 0 else timer - numDelayTicks
     numDelayTicks = floor $ numTicksThisTime - numTicksLastTime
-    numTicksThisTime = fromIntegral newNumMsSinceOn / ((1 / 60) * 1000)
-    numTicksLastTime = fromIntegral numMsSinceOn / ((1 / 60) * 1000)
+    numTicksThisTime = fromIntegral newNumMsSinceOn / (1 / 60 * 1000)
+    numTicksLastTime = fromIntegral numMsSinceOn / (1 / 60 * 1000)
 
 interp :: Computer -> Either String Computer
 interp
@@ -121,22 +121,22 @@ interp
     -- ADD Vx, byte: Set Vx = Vx + byte
     (0x7, vx, bl, bh) ->
       let byte = joinNibbles [bl, bh]
-          vx' = (registers ! vx) + byte
+          vx' = registers ! vx + byte
        in Right $ nextComp {registers = registers // [(vx, vx')]}
     -- LD Vx, Vy: Set Vx = Vy
     (0x8, vx, vy, 0x0) ->
       Right $ nextComp {registers = registers // [(vx, registers ! vy)]}
     -- OR Vx, Vy: Set Vx = Vx OR Vy (bitwise OR)
     (0x8, vx, vy, 0x1) ->
-      let vx' = (registers ! vx) .|. (registers ! vy)
+      let vx' = registers ! vx .|. registers ! vy
        in Right $ nextComp {registers = registers // [(vx, vx')]}
     -- AND Vx, Vy: Set Vx = Vx OR Vy (bitwise AND)
     (0x8, vx, vy, 0x2) ->
-      let vx' = (registers ! vx) .&. (registers ! vy)
+      let vx' = registers ! vx .&. registers ! vy
        in Right $ nextComp {registers = registers // [(vx, vx')]}
     -- XOR Vx, Vy: Set Vx = Vx XOR Vy (bitwise XOR)
     (0x8, vx, vy, 0x3) ->
-      let vx' = (registers ! vx) `xor` (registers ! vy)
+      let vx' = registers ! vx `xor` registers ! vy
        in Right $ nextComp {registers = registers // [(vx, vx')]}
     -- ADD Vx, Vy: Set Vx = Vx + Vy, set VF = carry
     (0x8, vx, vy, 0x4) -> Right $ nextComp {registers = registers'}
@@ -194,7 +194,7 @@ interp
         (newPx, collision) =
           foldl
             ( \(upd, hasColli) (ex, new) ->
-                (upd <> [ex `xor` new], hasColli || (ex && new))
+                (upd <> [ex `xor` new], hasColli || ex && new)
             )
             ([], False)
             $ zip existingPx newPx
@@ -294,8 +294,8 @@ bcd3 :: Word8 -> [Word8]
 bcd3 n = [hundreds, tens, ones]
   where
     hundreds = n `div` 100
-    tens = (n - (hundreds * 100)) `div` 10
-    ones = n - (hundreds * 100) - (tens * 10)
+    tens = (n - hundreds * 100) `div` 10
+    ones = n - hundreds * 100 - tens * 10
 
 -- display: 64x32 pixels
 displayWidth :: Word8
@@ -381,12 +381,25 @@ nextComp tix computer = case interp $ timing tix computer of
   Left s -> error s
   Right comp -> comp
 
+scale :: Num n => n
+scale = 20
+
+windowConfig :: WindowConfig
+windowConfig =
+  defaultWindow
+    { windowHighDPI = True,
+      windowInitialSize =
+        V2
+          (fromIntegral displayWidth * scale)
+          (fromIntegral displayHeight * scale)
+    }
+
 -- main and apploop from
 -- https://hackage.haskell.org/package/sdl2-2.5.3.0/docs/SDL.html
 main :: IO ()
 main = do
   initializeAll
-  window <- createWindow "Ceremoney" defaultWindow
+  window <- createWindow "Ceremoney" windowConfig
   renderer <- createRenderer window (-1) defaultRenderer
   appLoop newComputer renderer
   destroyWindow window
@@ -404,6 +417,7 @@ appLoop computer renderer = do
 
   rendererDrawColor renderer $= black
   clear renderer
+  rendererScale renderer $= fromIntegral scale
   present renderer
 
   tix <- ticks
