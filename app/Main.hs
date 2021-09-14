@@ -1,6 +1,7 @@
 {-# LANGUAGE BinaryLiterals #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 
@@ -9,19 +10,23 @@ module Main where
 -- TODO: use https://www.imperialviolet.org/binary/jpeg/
 -- syn thing to pattern match the instruction
 
+import Control.Monad (unless)
 import Control.Monad.Except (MonadError, throwError)
 import Control.Monad.State (MonadState (get, put), State)
 import Data.Array (Ix (inRange, index, range), array, assocs, (!), (//))
 import Data.BitSyntax (ReadType (Unsigned), bitSyn)
 import Data.Bits (Bits, FiniteBits (finiteBitSize), shiftL, shiftR, testBit, xor, (.&.), (.|.))
 import qualified Data.ByteString as BS
+import Data.Either (fromRight)
 import Data.Foldable (find)
 import Data.Word (Word16, Word32, Word8)
 import Data.Word.Odd (Word4)
 import Data.Word12 (Word12)
 import Font (charBytes, hexFont)
 import GHC.Arr (Array (Array))
-import System.Random (StdGen, genWord8)
+import SDL (EventPayload (KeyboardEvent), InputMotion (Pressed), Renderer, V4 (V4), clear, createRenderer, createWindow, defaultRenderer, defaultWindow, destroyWindow, eventPayload, initializeAll, keyboardEventKeyMotion, keyboardEventKeysym, keysymKeycode, pollEvents, present, rendererDrawColor, ticks, ($=))
+import SDL.Input.Keyboard.Codes
+import System.Random (StdGen, genWord8, mkStdGen)
 
 -- from https://hackage.haskell.org/package/base-4.13.0.0/docs/src/GHC.Word.html
 instance Ix Word4 where
@@ -315,7 +320,7 @@ data Computer = Computer
   { -- usually 4096 addresses from 0x000 to 0xFFF
     memory :: Memory,
     -- 16 registers
-    registers :: Array Word4 Word8,
+    registers :: Registers,
     -- special register called I
     iReg :: Word16,
     pc :: Word16,
@@ -329,6 +334,28 @@ data Computer = Computer
     -- random number generator
     randGen :: StdGen
   }
+
+-- TODO: take in IO here for the rand generator?
+newComputer :: Computer
+newComputer =
+  Computer
+    { memory = newMemory,
+      registers = newRegisters,
+      iReg = 0x0,
+      pc = 0x0,
+      stack = [],
+      delayTimer = 0x0,
+      soundTimer = 0x0,
+      display = clearDisplay,
+      kb = newKeyboard,
+      numMsSinceOn = 0,
+      randGen = mkStdGen 42069
+    }
+
+type Registers = Array Word4 Word8
+
+newRegisters :: Registers
+newRegisters = array (0x0, 0xf) $ map (,0x0) [0x0 .. 0xf]
 
 type Memory = Array Word16 Word8
 
@@ -346,8 +373,41 @@ type Keyboard = Array Word4 Bool
 newKeyboard :: Keyboard
 newKeyboard = array (0x0, 0xf) $ map (,False) [0x0 .. 0xf]
 
+black :: V4 Word8
+black = V4 0 0 0 0
+
+nextComp :: Word32 -> Computer -> Computer
+nextComp tix computer = case interp $ timing tix computer of
+  Left s -> error s
+  Right comp -> comp
+
+-- main and apploop from
+-- https://hackage.haskell.org/package/sdl2-2.5.3.0/docs/SDL.html
 main :: IO ()
-main = putStrLn "sup"
+main = do
+  initializeAll
+  window <- createWindow "Ceremoney" defaultWindow
+  renderer <- createRenderer window (-1) defaultRenderer
+  appLoop newComputer renderer
+  destroyWindow window
+
+appLoop :: Computer -> Renderer -> IO ()
+appLoop computer renderer = do
+  events <- pollEvents
+  let eventIsQPress event =
+        case eventPayload event of
+          KeyboardEvent keyboardEvent ->
+            keyboardEventKeyMotion keyboardEvent == Pressed
+              && keysymKeycode (keyboardEventKeysym keyboardEvent) == KeycodeQ
+          _ -> False
+      qPressed = any eventIsQPress events
+
+  rendererDrawColor renderer $= black
+  clear renderer
+  present renderer
+
+  tix <- ticks
+  unless qPressed $ appLoop (nextComp tix computer) renderer
 
 -- from https://hackage.haskell.org/package/extra-1.7.10/docs/src/Data.List.Extra.html#unsnoc
 unsnoc :: [a] -> Maybe ([a], a)
