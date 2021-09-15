@@ -19,12 +19,15 @@ import Data.Bits (Bits, FiniteBits (finiteBitSize), shiftL, shiftR, testBit, xor
 import qualified Data.ByteString as BS
 import Data.Either (fromRight)
 import Data.Foldable (find)
+import qualified Data.Vector.Storable as SV
 import Data.Word (Word16, Word32, Word8)
 import Data.Word.Odd (Word4)
 import Data.Word12 (Word12)
+import Debug.Trace (traceShow, traceShowId)
 import Font (charBytes, hexFont)
 import GHC.Arr (Array (Array))
-import SDL (EventPayload (KeyboardEvent), InputMotion (Pressed), Renderer, V2 (V2), V4 (V4), WindowConfig, clear, createRenderer, createWindow, defaultRenderer, defaultWindow, destroyWindow, eventPayload, initializeAll, keyboardEventKeyMotion, keyboardEventKeysym, keysymKeycode, pollEvents, present, rendererDrawColor, rendererScale, ticks, windowHighDPI, windowInitialSize, ($=))
+import Numeric (showHex)
+import SDL (EventPayload (KeyboardEvent), InputMotion (Pressed), Point (P), Renderer, V2 (V2), V4 (V4), WindowConfig, clear, createRenderer, createWindow, defaultRenderer, defaultWindow, destroyWindow, drawPoint, drawPoints, eventPayload, initializeAll, keyboardEventKeyMotion, keyboardEventKeysym, keysymKeycode, pollEvents, present, rendererDrawColor, rendererScale, ticks, windowHighDPI, windowInitialSize, ($=))
 import SDL.Input.Keyboard.Codes
 import System.Random (StdGen, genWord8, mkStdGen)
 
@@ -266,7 +269,8 @@ interp
     -- Error: Invalid instruction
     notfound -> Left $ "invalid instruction " <> show notfound
     where
-      inst = chop8s (memory ! pc, memory ! pc + 1)
+      inst = traceShow (ph a, ph b, ph c, ph d) inst'
+      inst'@(a, b, c, d) = chop8s (memory ! pc, memory ! pc + 1)
       nextPc = pc + 1
       nextComp = comp {pc = nextPc}
       skipPc = nextPc + 1
@@ -274,6 +278,8 @@ interp
       getReg = (registers !)
       vf = 0xf
       v0 = 0x0
+
+ph n = "0x" ++ showHex (fromIntegral n) ""
 
 bits :: Word8 -> [Bool]
 bits bs = reverse $ map (testBit bs) [0 .. finiteBitSize bs - 1]
@@ -335,6 +341,16 @@ data Computer = Computer
     randGen :: StdGen
   }
 
+programStart :: Word16
+programStart = 0x200
+
+loadProgram :: String -> IO Computer
+loadProgram filename = do
+  let comp@Computer {memory} = newComputer
+  content <- BS.readFile filename
+  let memUpdates = zip [0x200 ..] $ BS.unpack content
+  pure comp {pc = programStart, memory = memory // memUpdates}
+
 -- TODO: take in IO here for the rand generator?
 newComputer :: Computer
 newComputer =
@@ -376,6 +392,9 @@ newKeyboard = array (0x0, 0xf) $ map (,False) [0x0 .. 0xf]
 black :: V4 Word8
 black = V4 0 0 0 0
 
+white :: V4 Word8
+white = V4 0xff 0xff 0xff 0xff
+
 nextComp :: Word32 -> Computer -> Computer
 nextComp tix computer = case interp $ timing tix computer of
   Left s -> error s
@@ -399,13 +418,18 @@ windowConfig =
 main :: IO ()
 main = do
   initializeAll
+  comp <- loadProgram "test_opcode.ch8"
   window <- createWindow "Ceremoney" windowConfig
   renderer <- createRenderer window (-1) defaultRenderer
-  appLoop newComputer renderer
+  rendererScale renderer $= fromIntegral scale
+  appLoop comp renderer
   destroyWindow window
 
+coordToV2 :: (Integral a1, Integral a2, Num a3) => (a1, a2) -> Point V2 a3
+coordToV2 (x, y) = P $ V2 (fromIntegral x) (fromIntegral y)
+
 appLoop :: Computer -> Renderer -> IO ()
-appLoop computer renderer = do
+appLoop comp@Computer {display} renderer = do
   events <- pollEvents
   let eventIsQPress event =
         case eventPayload event of
@@ -417,11 +441,12 @@ appLoop computer renderer = do
 
   rendererDrawColor renderer $= black
   clear renderer
-  rendererScale renderer $= fromIntegral scale
+  rendererDrawColor renderer $= white
+  drawPoints renderer $ SV.fromList $ map (coordToV2 . fst) $ filter snd $ assocs display
   present renderer
 
   tix <- ticks
-  unless qPressed $ appLoop (nextComp tix computer) renderer
+  unless qPressed $ appLoop (nextComp tix comp) renderer
 
 -- from https://hackage.haskell.org/package/extra-1.7.10/docs/src/Data.List.Extra.html#unsnoc
 unsnoc :: [a] -> Maybe ([a], a)
