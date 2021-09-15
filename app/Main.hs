@@ -29,6 +29,7 @@ import GHC.Arr (Array (Array))
 import Numeric (showHex)
 import SDL (EventPayload (KeyboardEvent), InputMotion (Pressed), Point (P), Renderer, V2 (V2), V4 (V4), WindowConfig, clear, createRenderer, createWindow, defaultRenderer, defaultWindow, destroyWindow, drawPoint, drawPoints, eventPayload, initializeAll, keyboardEventKeyMotion, keyboardEventKeysym, keysymKeycode, pollEvents, present, rendererDrawColor, rendererScale, ticks, windowHighDPI, windowInitialSize, ($=))
 import SDL.Input.Keyboard.Codes
+import System.Environment (getArgs)
 import System.Random (StdGen, genWord8, mkStdGen)
 
 -- from https://hackage.haskell.org/package/base-4.13.0.0/docs/src/GHC.Word.html
@@ -272,8 +273,9 @@ interp
     -- Error: Invalid instruction
     notfound -> Left $ "invalid instruction " <> show notfound
     where
-      inst = traceShow (ph a, ph b, ph c, ph d) inst'
-      inst'@(a, b, c, d) = chop8s (memory ! pc, memory ! (pc + 1))
+      --inst = traceShow (ph a, ph b, ph c, ph d) inst'
+      --inst'@(a, b, c, d) = chop8s (memory ! pc, memory ! (pc + 1))
+      inst = chop8s (memory ! pc, memory ! (pc + 1))
       nextPc = pc + numBytesPerInstruction
       nextComp = comp {pc = nextPc}
       skipPc = nextPc + numBytesPerInstruction
@@ -421,7 +423,8 @@ windowConfig =
 main :: IO ()
 main = do
   initializeAll
-  comp <- loadProgram "test_opcode.ch8"
+  args <- getArgs
+  comp <- loadProgram $ head args
   window <- createWindow "Ceremoney" windowConfig
   renderer <- createRenderer window (-1) defaultRenderer
   rendererScale renderer $= fromIntegral scale
