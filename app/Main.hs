@@ -348,7 +348,7 @@ loadProgram :: String -> IO Computer
 loadProgram filename = do
   let comp@Computer {memory} = newComputer
   content <- BS.readFile filename
-  let memUpdates = zip [0x200 ..] $ BS.unpack content
+  let memUpdates = zip [programStart ..] $ BS.unpack content
   pure comp {pc = programStart, memory = memory // memUpdates}
 
 -- TODO: take in IO here for the rand generator?
@@ -418,7 +418,7 @@ windowConfig =
 main :: IO ()
 main = do
   initializeAll
-  comp <- loadProgram "test_opcode.ch8"
+  comp <- loadProgram "chip8-test-rom.ch8"
   window <- createWindow "Ceremoney" windowConfig
   renderer <- createRenderer window (-1) defaultRenderer
   rendererScale renderer $= fromIntegral scale
