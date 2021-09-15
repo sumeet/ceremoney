@@ -270,7 +270,7 @@ interp
     notfound -> Left $ "invalid instruction " <> show notfound
     where
       inst = traceShow (ph a, ph b, ph c, ph d) inst'
-      inst'@(a, b, c, d) = chop8s (memory ! pc, memory ! pc + 1)
+      inst'@(a, b, c, d) = chop8s (memory ! pc, memory ! (pc + 1))
       nextPc = pc + 1
       nextComp = comp {pc = nextPc}
       skipPc = nextPc + 1
