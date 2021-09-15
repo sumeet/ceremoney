@@ -79,6 +79,9 @@ timing newNumMsSinceOn comp@Computer {delayTimer, soundTimer, numMsSinceOn} =
     numTicksThisTime = fromIntegral newNumMsSinceOn / (1 / 60 * 1000)
     numTicksLastTime = fromIntegral numMsSinceOn / (1 / 60 * 1000)
 
+numBytesPerInstruction :: Num n => n
+numBytesPerInstruction = 2
+
 interp :: Computer -> Either String Computer
 interp
   comp@Computer
@@ -184,23 +187,23 @@ interp
         (randByte, randGen') = genWord8 randGen
         registers' = registers // [(vx, randByte .&. joinNibbles [nl, nh])]
     -- DRW Vx, Vy, nibble: Display n-byte sprite starting at memory location I at
-    -- (Vx, Vy), set VF = collision
+    -- screen position (Vx, Vy), set VF = collision
     -- sprites are always 8 across
     (0xd, vx, vy, n) ->
       Right $
         nextComp
-          { display = display // updates,
+          { display = display // displayUpdates,
             registers = registers // [(vf, if collision then 0x1 else 0x0)]
           }
       where
-        updates = zip coords newPx
+        displayUpdates = zip coords newPx
         (newPx, collision) =
           foldl
             ( \(upd, hasColli) (ex, new) ->
                 (upd <> [ex `xor` new], hasColli || ex && new)
             )
             ([], False)
-            $ zip existingPx newPx
+            $ zip existingPx memPx
         xor = (/=)
         memPx =
           concatMap bits $
@@ -271,9 +274,9 @@ interp
     where
       inst = traceShow (ph a, ph b, ph c, ph d) inst'
       inst'@(a, b, c, d) = chop8s (memory ! pc, memory ! (pc + 1))
-      nextPc = pc + 1
+      nextPc = pc + numBytesPerInstruction
       nextComp = comp {pc = nextPc}
-      skipPc = nextPc + 1
+      skipPc = nextPc + numBytesPerInstruction
       skipComp = comp {pc = skipPc}
       getReg = (registers !)
       vf = 0xf
@@ -418,7 +421,7 @@ windowConfig =
 main :: IO ()
 main = do
   initializeAll
-  comp <- loadProgram "chip8-test-rom.ch8"
+  comp <- loadProgram "test_opcode.ch8"
   window <- createWindow "Ceremoney" windowConfig
   renderer <- createRenderer window (-1) defaultRenderer
   rendererScale renderer $= fromIntegral scale
