@@ -19,6 +19,7 @@ import Data.Bits (Bits, FiniteBits (finiteBitSize), shiftL, shiftR, testBit, xor
 import qualified Data.ByteString as BS
 import Data.Either (fromRight)
 import Data.Foldable (find)
+import Data.Ratio (Ratio)
 import qualified Data.Vector.Storable as SV
 import Data.Word (Word16, Word32, Word8)
 import Data.Word.Odd (Word4)
@@ -69,17 +70,17 @@ chop8 b = (fromIntegral l, fromIntegral r)
     r = b .&. 0x0f
 
 timing :: Word32 -> Computer -> Computer
-timing newNumMsSinceOn comp@Computer {delayTimer, soundTimer, numTicksSinceOn} =
+timing numMsSinceOn comp@Computer {delayTimer, soundTimer, numTicked, prevNumMsSeen} =
   comp
-    { delayTimer = decr delayTimer,
-      soundTimer = decr soundTimer,
-      numTicksSinceOn = numTicksThisTime
+    { delayTimer = decr $ fromIntegral delayTimer,
+      soundTimer = decr $ fromIntegral soundTimer,
+      prevNumMsSeen = numMsSinceOn
     }
   where
-    decr timer = if timer < numDelayTicks then 0 else timer - numDelayTicks
-    numDelayTicks = traceShowId $ floor $ numTicksThisTime - numTicksLastTime
-    numTicksThisTime = fromIntegral newNumMsSinceOn / (1 / 60 * 1000)
-    numTicksLastTime = fromIntegral numMsSinceOn / (1 / 60 * 1000)
+    decr timer = max (floor $ timer - numTicksDiff) 0
+    numTicksDiff = numTicksNow - (fromIntegral numTicked :: Ratio Word32)
+    numTicksNow = (fromIntegral numMsSinceOn :: Ratio Word32) / (1 / 60 * 1000)
+    numMsUsed = (fromIntegral numTicked :: Ratio Word32) * ((1 / 60) * 1000)
 
 numBytesPerInstruction :: Num n => n
 numBytesPerInstruction = 2
@@ -341,7 +342,10 @@ data Computer = Computer
     soundTimer :: Word8,
     display :: Display,
     kb :: Keyboard,
-    numTicksSinceOn :: Double,
+    -- numTicked and prevNumMsSeen used for timing
+    -- basically prevNumMsSeen at 60Hz... see `timing` for more information
+    numTicked :: Word32,
+    prevNumMsSeen :: Word32,
     -- random number generator
     randGen :: StdGen
   }
@@ -369,7 +373,8 @@ newComputer =
       soundTimer = 0x0,
       display = clearDisplay,
       kb = newKeyboard,
-      numMsSinceOn = 0,
+      numTicked = 0,
+      prevNumMsSeen = 0,
       randGen = mkStdGen 42069
     }
 
