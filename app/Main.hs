@@ -27,7 +27,8 @@ import Debug.Trace (traceShow, traceShowId)
 import Font (charBytes, hexFont)
 import GHC.Arr (Array (Array))
 import Numeric (showHex)
-import SDL (EventPayload (KeyboardEvent), InputMotion (Pressed), Point (P), Renderer, V2 (V2), V4 (V4), WindowConfig, clear, createRenderer, createWindow, defaultRenderer, defaultWindow, destroyWindow, drawPoint, drawPoints, eventPayload, initializeAll, keyboardEventKeyMotion, keyboardEventKeysym, keysymKeycode, pollEvents, present, rendererDrawColor, rendererScale, ticks, windowHighDPI, windowInitialSize, ($=))
+import SDL (EventPayload (KeyboardEvent), InputMotion (Pressed, Released), KeyboardEventData (KeyboardEventData), Point (P), Renderer, V2 (V2), V4 (V4), WindowConfig, clear, createRenderer, createWindow, defaultRenderer, defaultWindow, destroyWindow, drawPoint, drawPoints, eventPayload, initializeAll, keyboardEventKeyMotion, keyboardEventKeysym, keysymKeycode, pollEvents, present, rendererDrawColor, rendererScale, ticks, windowHighDPI, windowInitialSize, ($=))
+import qualified SDL
 import SDL.Input.Keyboard.Codes
 import System.Environment (getArgs)
 import System.Random (StdGen, genWord8, mkStdGen)
@@ -68,15 +69,15 @@ chop8 b = (fromIntegral l, fromIntegral r)
     r = b .&. 0x0f
 
 timing :: Word32 -> Computer -> Computer
-timing newNumMsSinceOn comp@Computer {delayTimer, soundTimer, numMsSinceOn} =
+timing newNumMsSinceOn comp@Computer {delayTimer, soundTimer, numTicksSinceOn} =
   comp
     { delayTimer = decr delayTimer,
       soundTimer = decr soundTimer,
-      numMsSinceOn = newNumMsSinceOn
+      numTicksSinceOn = numTicksThisTime
     }
   where
     decr timer = if timer < numDelayTicks then 0 else timer - numDelayTicks
-    numDelayTicks = floor $ numTicksThisTime - numTicksLastTime
+    numDelayTicks = traceShowId $ floor $ numTicksThisTime - numTicksLastTime
     numTicksThisTime = fromIntegral newNumMsSinceOn / (1 / 60 * 1000)
     numTicksLastTime = fromIntegral numMsSinceOn / (1 / 60 * 1000)
 
@@ -340,8 +341,7 @@ data Computer = Computer
     soundTimer :: Word8,
     display :: Display,
     kb :: Keyboard,
-    -- timer: Word32 because that's what SDL uses
-    numMsSinceOn :: Word32,
+    numTicksSinceOn :: Double,
     -- random number generator
     randGen :: StdGen
   }
@@ -434,16 +434,71 @@ main = do
 coordToV2 :: (Integral a1, Integral a2, Num a3) => (a1, a2) -> Point V2 a3
 coordToV2 (x, y) = P $ V2 (fromIntegral x) (fromIntegral y)
 
+data Event = KeyDown Word4 | KeyUp Word4 | Quit | None
+
+processSDLEvent :: SDL.Event -> Event
+processSDLEvent
+  SDL.Event
+    { eventPayload =
+        KeyboardEvent
+          KeyboardEventData
+            { keyboardEventKeyMotion,
+              keyboardEventKeysym
+            }
+    } =
+    case (keyboardEventKeyMotion, keysymKeycode keyboardEventKeysym) of
+      (Pressed, KeycodeQ) -> Quit
+      (Pressed, Keycode0) -> KeyDown 0x0
+      (Pressed, Keycode1) -> KeyDown 0x1
+      (Pressed, Keycode2) -> KeyDown 0x2
+      (Pressed, Keycode3) -> KeyDown 0x3
+      (Pressed, Keycode4) -> KeyDown 0x4
+      (Pressed, Keycode5) -> KeyDown 0x5
+      (Pressed, Keycode6) -> KeyDown 0x6
+      (Pressed, Keycode7) -> KeyDown 0x7
+      (Pressed, Keycode8) -> KeyDown 0x8
+      (Pressed, Keycode9) -> KeyDown 0x9
+      (Pressed, KeycodeA) -> KeyDown 0xa
+      (Pressed, KeycodeB) -> KeyDown 0xb
+      (Pressed, KeycodeC) -> KeyDown 0xc
+      (Pressed, KeycodeD) -> KeyDown 0xd
+      (Pressed, KeycodeE) -> KeyDown 0xe
+      (Pressed, KeycodeF) -> KeyDown 0xf
+      (Released, Keycode0) -> KeyUp 0x0
+      (Released, Keycode1) -> KeyUp 0x1
+      (Released, Keycode2) -> KeyUp 0x2
+      (Released, Keycode3) -> KeyUp 0x3
+      (Released, Keycode4) -> KeyUp 0x4
+      (Released, Keycode5) -> KeyUp 0x5
+      (Released, Keycode6) -> KeyUp 0x6
+      (Released, Keycode7) -> KeyUp 0x7
+      (Released, Keycode8) -> KeyUp 0x8
+      (Released, Keycode9) -> KeyUp 0x9
+      (Released, KeycodeA) -> KeyUp 0xa
+      (Released, KeycodeB) -> KeyUp 0xb
+      (Released, KeycodeC) -> KeyUp 0xc
+      (Released, KeycodeD) -> KeyUp 0xd
+      (Released, KeycodeE) -> KeyUp 0xe
+      (Released, KeycodeF) -> KeyUp 0xf
+      _ -> None
+processSDLEvent _ = None
+
 appLoop :: Computer -> Renderer -> IO ()
 appLoop comp@Computer {display} renderer = do
   events <- pollEvents
-  let eventIsQPress event =
-        case eventPayload event of
-          KeyboardEvent keyboardEvent ->
-            keyboardEventKeyMotion keyboardEvent == Pressed
-              && keysymKeycode (keyboardEventKeysym keyboardEvent) == KeycodeQ
-          _ -> False
-      qPressed = any eventIsQPress events
+
+  let (comp', quit) =
+        foldl
+          ( \(comp''@Computer {kb}, quit) event ->
+              let setKb key onOrOff = comp'' {kb = kb // [(key, onOrOff)]}
+               in case processSDLEvent event of
+                    KeyDown k -> (setKb k True, quit)
+                    KeyUp k -> (setKb k False, quit)
+                    Quit -> (comp'', True)
+                    None -> (comp'', quit)
+          )
+          (comp, False)
+          events
 
   rendererDrawColor renderer $= black
   clear renderer
@@ -452,7 +507,7 @@ appLoop comp@Computer {display} renderer = do
   present renderer
 
   tix <- ticks
-  unless qPressed $ appLoop (nextComp tix comp) renderer
+  unless quit $ appLoop (nextComp tix comp') renderer
 
 -- from https://hackage.haskell.org/package/extra-1.7.10/docs/src/Data.List.Extra.html#unsnoc
 unsnoc :: [a] -> Maybe ([a], a)
