@@ -72,14 +72,14 @@ chop8 b = (fromIntegral l, fromIntegral r)
 timing :: Word32 -> Computer -> Computer
 timing numMsSinceOn comp@Computer {delayTimer, soundTimer, numTicked, prevNumMsSeen} =
   comp
-    { delayTimer = decr $ fromIntegral delayTimer,
-      soundTimer = decr $ fromIntegral soundTimer,
+    { delayTimer = fromIntegral $ decr $ fromIntegral delayTimer,
+      soundTimer = fromIntegral $ decr $ fromIntegral soundTimer,
       prevNumMsSeen = numMsSinceOn
     }
   where
-    decr timer = max (floor $ timer - numTicksDiff) 0
-    numTicksDiff = numTicksNow - (fromIntegral numTicked :: Ratio Word32)
-    numTicksNow = (fromIntegral numMsSinceOn :: Ratio Word32) / (1 / 60 * 1000)
+    decr timer = max (timer - numTicksDiff) 0
+    numTicksDiff = numTicksNow - numTicked
+    numTicksNow = floor $ (fromIntegral numMsSinceOn :: Ratio Word32) / (1 / 60 * 1000)
     numMsUsed = (fromIntegral numTicked :: Ratio Word32) * ((1 / 60) * 1000)
 
 numBytesPerInstruction :: Num n => n
@@ -273,7 +273,7 @@ interp
     --
     -- END OF VALID INSTRUCTIONS
     -- Error: Invalid instruction
-    notfound -> Left $ "invalid instruction " <> show notfound
+    (a, b, c, d) -> Left $ "invalid instruction " <> show (ph a, ph b, ph c, ph d)
     where
       --inst = traceShow (ph a, ph b, ph c, ph d) inst'
       --inst'@(a, b, c, d) = chop8s (memory ! pc, memory ! (pc + 1))
@@ -282,7 +282,6 @@ interp
       nextComp = comp {pc = nextPc}
       skipPc = nextPc + numBytesPerInstruction
       skipComp = comp {pc = skipPc}
-      getReg = (registers !)
       vf = 0xf
       v0 = 0x0
 
@@ -495,7 +494,8 @@ appLoop comp@Computer {display} renderer = do
   let (comp', quit) =
         foldl
           ( \(comp''@Computer {kb}, quit) event ->
-              let setKb key onOrOff = comp'' {kb = kb // [(key, onOrOff)]}
+              -- the /= (kb ! key) part is the debounce
+              let setKb key onOrOff = comp'' {kb = kb // [(key, onOrOff /= (kb ! key))]}
                in case processSDLEvent event of
                     KeyDown k -> (setKb k True, quit)
                     KeyUp k -> (setKb k False, quit)
